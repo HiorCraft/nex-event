@@ -7,6 +7,7 @@ surfPaperPluginApi {
     generateLibraryLoader(false)
     foliaSupported(true)
     authors.add("hiorcraft")
+    withSurfRedis()
 }
 
 dependencies {

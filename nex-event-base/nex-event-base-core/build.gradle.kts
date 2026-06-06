@@ -5,3 +5,7 @@ plugins {
 dependencies {
     api(projects.nexEventBase.nexEventBaseApi)
 }
+
+surfCoreApi {
+    withSurfRedis()
+}
