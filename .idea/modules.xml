@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-api/nex-event.nex-event-base.nex-event-base-api.main.iml" filepath="$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-api/nex-event.nex-event-base.nex-event-base-api.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-core/nex-event.nex-event-base.nex-event-base-core.main.iml" filepath="$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-core/nex-event.nex-event-base.nex-event-base-core.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-paper/nex-event.nex-event-base.nex-event-base-paper.main.iml" filepath="$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-paper/nex-event.nex-event-base.nex-event-base-paper.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-velocity/nex-event.nex-event-base.nex-event-base-velocity.main.iml" filepath="$PROJECT_DIR$/.idea/modules/nex-event-base/nex-event-base-velocity/nex-event.nex-event-base.nex-event-base-velocity.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/nex-event-events/nex-hide-and-seek/nex-event.nex-event-events.nex-hide-and-seek.main.iml" filepath="$PROJECT_DIR$/.idea/modules/nex-event-events/nex-hide-and-seek/nex-event.nex-event-events.nex-hide-and-seek.main.iml" />
+    </modules>
+  </component>
+</project>
