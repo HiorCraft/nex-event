@@ -2,6 +2,7 @@
 
 package dev.hiorcraft.nex.hideandseek.game
 
+import dev.hiorcraft.nex.hideandseek.world.WorldMapManager
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
@@ -19,7 +20,10 @@ import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.util.Vector
 import java.time.Duration
 
-class HideAndSeekGame(val plugin: JavaPlugin) {
+class HideAndSeekGame(
+    val plugin: JavaPlugin,
+    private val worldMapManager: WorldMapManager
+) {
 
     var state: GameState = GameState.WAITING
         private set
@@ -79,6 +83,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
             broadcast(Component.text("Mindestens 2 Spieler werden benötigt!", NamedTextColor.RED))
             return false
         }
+        if (!teleportPlayersToActiveMap()) return false
 
         val picked = players.random()
         seeker = picked
@@ -112,6 +117,18 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         }
 
         startHidingPhase()
+        return true
+    }
+
+    private fun teleportPlayersToActiveMap(): Boolean {
+        val map = worldMapManager.activeMap ?: return true
+        val world = worldMapManager.resolveWorld(map)
+        if (world == null) {
+            broadcast(Component.text("Die aktive Map-Welt konnte nicht geladen werden.", NamedTextColor.RED))
+            return false
+        }
+        val location = map.borderCenter.toLocation(world)
+        players.forEach { player -> player.teleport(location) }
         return true
     }
 
@@ -192,7 +209,11 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         gameWorld = world
         val border = world.worldBorder
         originalBorderSize = border.size
-        border.center = world.spawnLocation
+        val configuredCenter = worldMapManager.activeMap
+            ?.takeIf { it.worldName == world.name }
+            ?.borderCenter
+            ?.toLocation(world)
+        border.center = configuredCenter ?: world.spawnLocation
         border.size = 200.0
         border.setSize(30.0, seekSeconds.toLong())
         broadcast(Component.text("Die Map schrumpft! Bleibt innerhalb der Grenze!", NamedTextColor.RED))
