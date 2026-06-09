@@ -31,6 +31,8 @@ class HideAndSeekGame(
     val players = mutableSetOf<Player>()
     val hiders = mutableSetOf<Player>()
     var seeker: Player? = null
+    private var initialHiderCount = 0
+    private var phaseRemainingSeconds = 0
 
     private val hideSeconds = 30
     private val seekSeconds = 180
@@ -42,6 +44,15 @@ class HideAndSeekGame(
     val glowPearlKey = NamespacedKey(plugin, "glow_pearl")
     val elytraPearlKey = NamespacedKey(plugin, "elytra_pearl")
     var seekerElytraActive = false
+
+    val timerSecondsRemaining: Int
+        get() = phaseRemainingSeconds
+
+    val aliveHidersCount: Int
+        get() = hiders.size
+
+    val deadHidersCount: Int
+        get() = (initialHiderCount - hiders.size).coerceAtLeast(0)
 
     fun join(player: Player): Boolean {
         if (state != GameState.WAITING) {
@@ -88,6 +99,7 @@ class HideAndSeekGame(
         val picked = players.random()
         seeker = picked
         hiders.addAll(players.filter { it != picked })
+        initialHiderCount = hiders.size
 
         state = GameState.HIDING
         applyHiderScale()
@@ -230,9 +242,11 @@ class HideAndSeekGame(
 
     private fun startHidingPhase() {
         var remaining = hideSeconds
+        phaseRemainingSeconds = remaining
         task = object : BukkitRunnable() {
             override fun run() {
                 if (remaining <= 0) {
+                    phaseRemainingSeconds = 0
                     cancel()
                     startSeekingPhase()
                     return
@@ -243,6 +257,7 @@ class HideAndSeekGame(
                     )
                 }
                 remaining--
+                phaseRemainingSeconds = remaining
             }
         }
         task!!.runTaskTimer(plugin, 0L, 20L)
@@ -268,9 +283,11 @@ class HideAndSeekGame(
         )
 
         var remaining = seekSeconds
+        phaseRemainingSeconds = remaining
         task = object : BukkitRunnable() {
             override fun run() {
                 if (remaining <= 0) {
+                    phaseRemainingSeconds = 0
                     cancel()
                     endWithHiderWin()
                     return
@@ -281,6 +298,7 @@ class HideAndSeekGame(
                     )
                 }
                 remaining--
+                phaseRemainingSeconds = remaining
             }
         }
         task!!.runTaskTimer(plugin, 0L, 20L)
@@ -304,6 +322,7 @@ class HideAndSeekGame(
     private fun endWithSeekerWin() {
         task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
 
         broadcast(
@@ -315,7 +334,9 @@ class HideAndSeekGame(
     }
 
     private fun endWithHiderWin() {
+        task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
 
         broadcast(
@@ -329,6 +350,7 @@ class HideAndSeekGame(
     fun forceEnd() {
         task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
         broadcast(Component.text("Das Spiel wurde beendet.", NamedTextColor.RED))
         scheduleReset()
@@ -343,6 +365,8 @@ class HideAndSeekGame(
                 hiders.clear()
                 seeker = null
                 seekerElytraActive = false
+                initialHiderCount = 0
+                phaseRemainingSeconds = 0
                 state = GameState.WAITING
             }
         }.runTaskLater(plugin, 100L)
