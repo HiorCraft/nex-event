@@ -1,7 +1,7 @@
-package dev.hiorcraft.nex.HideAndSeek.listener
+package dev.hiorcraft.nex.hideandseek.listener
 
-import dev.hiorcraft.nex.HideAndSeek.game.GameState
-import dev.hiorcraft.nex.HideAndSeek.game.HideAndSeekGame
+import dev.hiorcraft.nex.hideandseek.game.GameState
+import dev.hiorcraft.nex.hideandseek.game.HideAndSeekGame
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener

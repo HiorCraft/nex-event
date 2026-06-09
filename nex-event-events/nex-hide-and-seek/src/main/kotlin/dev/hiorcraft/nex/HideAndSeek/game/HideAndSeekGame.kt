@@ -1,12 +1,14 @@
-package dev.hiorcraft.nex.HideAndSeek.game
+@file:Suppress("SpellCheckingInspection")
+
+package dev.hiorcraft.nex.hideandseek.game
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
+import org.bukkit.Registry
 import org.bukkit.World
-import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -114,13 +116,15 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     }
 
     private fun applyHiderScale() {
+        val attr = Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic.scale")) ?: return
         hiders.forEach { hider ->
-            hider.getAttribute(Attribute.GENERIC_SCALE)?.baseValue = 0.75
+            hider.getAttribute(attr)?.baseValue = 0.75
         }
     }
 
     private fun resetPlayerScale(player: Player) {
-        player.getAttribute(Attribute.GENERIC_SCALE)?.baseValue = 1.0
+        val attr = Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic.scale")) ?: return
+        player.getAttribute(attr)?.baseValue = 1.0
     }
 
     private fun giveSeekingItems() {
@@ -169,7 +173,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
 
     fun useElytraPearl(s: Player) {
         seekerElytraActive = true
-        s.inventory.chestplate = ItemStack(Material.ELYTRA)
+        s.inventory.setChestplate(ItemStack(Material.ELYTRA))
         s.velocity = s.velocity.add(Vector(0.0, 2.5, 0.0))
         s.sendMessage(Component.text("Elytra aktiviert! Drücke Leertaste zum Gleiten!", NamedTextColor.AQUA))
         s.sendMessage(Component.text("Die Elytra wird nach der Landung entfernt.", NamedTextColor.GRAY))
@@ -178,10 +182,11 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     fun onSeekerLanded() {
         if (!seekerElytraActive) return
         seekerElytraActive = false
-        seeker?.inventory?.chestplate = null
+        seeker?.inventory?.setChestplate(ItemStack(Material.AIR))
         seeker?.sendMessage(Component.text("Elytra entfernt.", NamedTextColor.GRAY))
     }
 
+    @Suppress("DEPRECATION", "removal")
     private fun startBorderShrink() {
         val world = seeker?.world ?: return
         gameWorld = world

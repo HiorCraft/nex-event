@@ -1,4 +1,4 @@
-package dev.hiorcraft.nex.HideAndSeek.game
+package dev.hiorcraft.nex.hideandseek.game
 
 enum class GameState {
     WAITING,

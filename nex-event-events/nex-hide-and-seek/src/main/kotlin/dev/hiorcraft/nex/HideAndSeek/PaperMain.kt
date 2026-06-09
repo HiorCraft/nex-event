@@ -1,8 +1,8 @@
-package dev.hiorcraft.nex.HideAndSeek
+package dev.hiorcraft.nex.hideandseek
 
-import dev.hiorcraft.nex.HideAndSeek.command.HideAndSeekCommand
-import dev.hiorcraft.nex.HideAndSeek.game.HideAndSeekGame
-import dev.hiorcraft.nex.HideAndSeek.listener.HideAndSeekListener
+import dev.hiorcraft.nex.hideandseek.command.HideAndSeekCommand
+import dev.hiorcraft.nex.hideandseek.game.HideAndSeekGame
+import dev.hiorcraft.nex.hideandseek.listener.HideAndSeekListener
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -25,7 +25,7 @@ class PaperMain : JavaPlugin() {
     }
 
     override fun onDisable() {
-        if (game.state != dev.hiorcraft.nex.HideAndSeek.game.GameState.WAITING) {
+        if (game.state != dev.hiorcraft.nex.hideandseek.game.GameState.WAITING) {
             game.forceEnd()
         }
         logger.info("Hide and Seek Plugin gestoppt!")

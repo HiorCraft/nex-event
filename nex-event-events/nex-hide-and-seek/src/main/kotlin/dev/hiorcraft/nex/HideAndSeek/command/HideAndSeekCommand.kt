@@ -1,7 +1,9 @@
-package dev.hiorcraft.nex.HideAndSeek.command
+@file:Suppress("SpellCheckingInspection")
 
-import dev.hiorcraft.nex.HideAndSeek.game.HideAndSeekGame
-import dev.hiorcraft.nex.HideAndSeek.game.GameState
+package dev.hiorcraft.nex.hideandseek.command
+
+import dev.hiorcraft.nex.hideandseek.game.HideAndSeekGame
+import dev.hiorcraft.nex.hideandseek.game.GameState
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import net.kyori.adventure.text.Component
