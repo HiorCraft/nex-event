@@ -1,6 +1,9 @@
 package dev.hiorcraft.nex.base.paper.config
 
+import dev.hiorcraft.nex.base.api.common.state.EventServerState
 import org.spongepowered.configurate.objectmapping.ConfigSerializable
 
 @ConfigSerializable
-class EventServerConfig
+data class EventServerConfig(
+    val defaultState: EventServerState = EventServerState.CLOSED
+)

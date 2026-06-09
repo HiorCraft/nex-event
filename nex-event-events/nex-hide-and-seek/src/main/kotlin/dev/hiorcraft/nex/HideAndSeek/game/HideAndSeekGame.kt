@@ -2,13 +2,17 @@
 
 package dev.hiorcraft.nex.hideandseek.game
 
+import dev.hiorcraft.nex.hideandseek.world.WorldMapManager
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
+import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Registry
 import org.bukkit.World
+import org.bukkit.WorldCreator
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -18,26 +22,99 @@ import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.util.Vector
 import java.time.Duration
+import java.util.UUID
 
-class HideAndSeekGame(val plugin: JavaPlugin) {
+class HideAndSeekGame(
+    val plugin: JavaPlugin,
+    private val worldMapManager: WorldMapManager
+) {
+    companion object {
+        private val COMMAND_SAFE_PLAYER_NAME_REGEX = Regex("^[A-Za-z0-9_]{1,16}$")
+    }
+
+    private enum class SeekerSelectionMode {
+        RANDOM,
+        COMMAND;
+
+        companion object {
+            fun fromConfig(value: String?): SeekerSelectionMode {
+                return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: RANDOM
+            }
+        }
+    }
+
+    private enum class FoundPlayerBehavior {
+        VANISH,
+        LOBBY;
+
+        companion object {
+            fun fromConfig(value: String?): FoundPlayerBehavior {
+                return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: VANISH
+            }
+        }
+    }
 
     var state: GameState = GameState.WAITING
         private set
 
     val players = mutableSetOf<Player>()
     val hiders = mutableSetOf<Player>()
+    private val foundPlayers = mutableSetOf<UUID>()
     var seeker: Player? = null
+    private var initialHiderCount = 0
+    private var phaseRemainingSeconds = 0
 
-    private val hideSeconds = 30
-    private val seekSeconds = 180
+    private val hideSeconds = plugin.config.getInt("game.hide-seconds", 30).coerceAtLeast(1)
+    private val seekSeconds = plugin.config.getInt("game.seek-seconds", 180).coerceAtLeast(1)
+    private val seekerSelectionMode = SeekerSelectionMode.fromConfig(plugin.config.getString("game.seeker-selection-mode"))
+    private val foundPlayerBehavior = FoundPlayerBehavior.fromConfig(plugin.config.getString("game.found-player-behavior"))
+    private val lobbyWorldName = plugin.config.getString("game.lobby.world")
+    private val lobbyLocation = readLobbyLocation()
     private var task: BukkitRunnable? = null
+    private var selectedSeekerId: UUID? = null
 
     private var gameWorld: World? = null
     private var originalBorderSize = 60_000_000.0
 
+    private val glowPearlCost = 10
+    private val elytraPearlCost = 15
+    private val glowDurationSeconds = 3
+
     val glowPearlKey = NamespacedKey(plugin, "glow_pearl")
     val elytraPearlKey = NamespacedKey(plugin, "elytra_pearl")
     var seekerElytraActive = false
+    var seekerKills = 0
+
+    val timerSecondsRemaining: Int
+        get() = phaseRemainingSeconds
+
+    val aliveHidersCount: Int
+        get() = hiders.size
+
+    val deadHidersCount: Int
+        get() = (initialHiderCount - hiders.size).coerceAtLeast(0)
+
+    val isManualSeekerSelectionEnabled: Boolean
+        get() = seekerSelectionMode == SeekerSelectionMode.COMMAND
+
+    val selectedSeekerName: String?
+        get() {
+            val selectedId = selectedSeekerId ?: return null
+            return players.firstOrNull { it.uniqueId == selectedId }?.name
+                ?: Bukkit.getPlayer(selectedId)?.name
+        }
+
+    fun selectSeeker(player: Player): Boolean {
+        if (state != GameState.WAITING) return false
+        if (!isManualSeekerSelectionEnabled) return false
+        if (player !in players) return false
+        selectedSeekerId = player.uniqueId
+        return true
+    }
+
+    fun clearSelectedSeeker() {
+        selectedSeekerId = null
+    }
 
     fun join(player: Player): Boolean {
         if (state != GameState.WAITING) {
@@ -56,6 +133,10 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         if (!players.remove(player)) return
         hiders.remove(player)
         resetPlayerScale(player)
+        removeFoundState(player)
+        if (state == GameState.WAITING && selectedSeekerId == player.uniqueId) {
+            selectedSeekerId = null
+        }
 
         if (seeker == player) {
             seeker = null
@@ -79,10 +160,25 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
             broadcast(Component.text("Mindestens 2 Spieler werden benötigt!", NamedTextColor.RED))
             return false
         }
+        if (!teleportPlayersToActiveMap()) return false
 
-        val picked = players.random()
+        val picked = when (seekerSelectionMode) {
+            SeekerSelectionMode.RANDOM -> players.random()
+            SeekerSelectionMode.COMMAND -> {
+                val selected = selectedSeekerId?.let { selectedId ->
+                    players.firstOrNull { it.uniqueId == selectedId }
+                }
+                if (selected == null) {
+                    broadcast(Component.text("Es wurde kein gültiger Sucher gesetzt. Nutze /has seeker <spieler>.", NamedTextColor.RED))
+                    return false
+                }
+                selected
+            }
+        }
         seeker = picked
+        selectedSeekerId = null
         hiders.addAll(players.filter { it != picked })
+        initialHiderCount = hiders.size
 
         state = GameState.HIDING
         applyHiderScale()
@@ -112,6 +208,21 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         }
 
         startHidingPhase()
+        return true
+    }
+
+    private fun teleportPlayersToActiveMap(): Boolean {
+        val map = worldMapManager.activeMap ?: run {
+            broadcast(Component.text("Keine aktive Map gesetzt, aktueller Spieler-Standort wird genutzt.", NamedTextColor.YELLOW))
+            return true
+        }
+        val world = worldMapManager.resolveWorld(map)
+        if (world == null) {
+            broadcast(Component.text("Die aktive Map-Welt konnte nicht geladen werden.", NamedTextColor.RED))
+            return false
+        }
+        val location = map.borderCenter.toLocation(world)
+        players.forEach { player -> player.teleport(location) }
         return true
     }
 
@@ -148,7 +259,10 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         val pearl = ItemStack(Material.ENDER_PEARL)
         val meta = pearl.itemMeta
         meta.displayName(Component.text("Leuchtperle", NamedTextColor.GOLD))
-        meta.lore(listOf(Component.text("Alle Verstecker leuchten 10s!", NamedTextColor.GRAY)))
+        meta.lore(listOf(
+            Component.text("Alle Verstecker leuchten $glowDurationSeconds Sekunden!", NamedTextColor.GRAY),
+            Component.text("Kosten: $glowPearlCost Kills", NamedTextColor.YELLOW)
+        ))
         meta.persistentDataContainer.set(glowPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
         return pearl
@@ -158,25 +272,42 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         val pearl = ItemStack(Material.ENDER_PEARL)
         val meta = pearl.itemMeta
         meta.displayName(Component.text("Elytraperle", NamedTextColor.AQUA))
-        meta.lore(listOf(Component.text("Einmalige Elytra!", NamedTextColor.GRAY)))
+        meta.lore(listOf(
+            Component.text("Einmalige Elytra!", NamedTextColor.GRAY),
+            Component.text("Kosten: $elytraPearlCost Kills", NamedTextColor.YELLOW)
+        ))
         meta.persistentDataContainer.set(elytraPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
         return pearl
     }
 
-    fun useGlowPearl() {
-        hiders.forEach { hider ->
-            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 200, 0))
+    fun useGlowPearl(player: Player): Boolean {
+        if (seekerKills < glowPearlCost) {
+            player.sendMessage(Component.text("Du benötigst $glowPearlCost Kills für die Leuchtperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+            return false
         }
-        broadcast(Component.text("Alle Verstecker leuchten für 10 Sekunden!", NamedTextColor.GOLD))
+        seekerKills -= glowPearlCost
+        hiders.forEach { hider ->
+            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, glowDurationSeconds * 20, 0))
+        }
+        broadcast(Component.text("Alle Verstecker leuchten für $glowDurationSeconds Sekunden!", NamedTextColor.GOLD))
+        player.sendMessage(Component.text("Kills übrig: $seekerKills", NamedTextColor.YELLOW))
+        return true
     }
 
-    fun useElytraPearl(s: Player) {
+    fun useElytraPearl(s: Player): Boolean {
+        if (seekerKills < elytraPearlCost) {
+            s.sendMessage(Component.text("Du benötigst $elytraPearlCost Kills für die Elytraperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+            return false
+        }
+        seekerKills -= elytraPearlCost
         seekerElytraActive = true
         s.inventory.setChestplate(ItemStack(Material.ELYTRA))
         s.velocity = s.velocity.add(Vector(0.0, 2.5, 0.0))
         s.sendMessage(Component.text("Elytra aktiviert! Drücke Leertaste zum Gleiten!", NamedTextColor.AQUA))
         s.sendMessage(Component.text("Die Elytra wird nach der Landung entfernt.", NamedTextColor.GRAY))
+        s.sendMessage(Component.text("Kills übrig: $seekerKills", NamedTextColor.YELLOW))
+        return true
     }
 
     fun onSeekerLanded() {
@@ -192,7 +323,11 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         gameWorld = world
         val border = world.worldBorder
         originalBorderSize = border.size
-        border.center = world.spawnLocation
+        val configuredCenter = worldMapManager.activeMap
+            ?.takeIf { it.worldName == world.name }
+            ?.borderCenter
+            ?.toLocation(world)
+        border.center = configuredCenter ?: world.spawnLocation
         border.size = 200.0
         border.setSize(30.0, seekSeconds.toLong())
         broadcast(Component.text("Die Map schrumpft! Bleibt innerhalb der Grenze!", NamedTextColor.RED))
@@ -206,9 +341,11 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
 
     private fun startHidingPhase() {
         var remaining = hideSeconds
+        phaseRemainingSeconds = remaining
         task = object : BukkitRunnable() {
             override fun run() {
                 if (remaining <= 0) {
+                    phaseRemainingSeconds = 0
                     cancel()
                     startSeekingPhase()
                     return
@@ -219,6 +356,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
                     )
                 }
                 remaining--
+                phaseRemainingSeconds = remaining
             }
         }
         task!!.runTaskTimer(plugin, 0L, 20L)
@@ -244,9 +382,11 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
         )
 
         var remaining = seekSeconds
+        phaseRemainingSeconds = remaining
         task = object : BukkitRunnable() {
             override fun run() {
                 if (remaining <= 0) {
+                    phaseRemainingSeconds = 0
                     cancel()
                     endWithHiderWin()
                     return
@@ -257,6 +397,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
                     )
                 }
                 remaining--
+                phaseRemainingSeconds = remaining
             }
         }
         task!!.runTaskTimer(plugin, 0L, 20L)
@@ -265,12 +406,17 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     fun findHider(hider: Player) {
         if (!hiders.remove(hider)) return
         resetPlayerScale(hider)
+        seekerKills++
+        when (foundPlayerBehavior) {
+            FoundPlayerBehavior.VANISH -> setFoundState(hider)
+            FoundPlayerBehavior.LOBBY -> sendFoundPlayerToLobby(hider)
+        }
 
         hider.sendMessage(Component.text("Du wurdest gefunden!", NamedTextColor.RED))
-        broadcast(
-            Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
-                .append(Component.text("Noch ${hiders.size} Verstecker übrig.", NamedTextColor.YELLOW))
-        )
+        val foundMessage = Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
+            .append(Component.text("Noch ${hiders.size} Verstecker übrig.", NamedTextColor.YELLOW))
+        broadcastGlobal(foundMessage)
+        seeker?.sendMessage(Component.text("Kills: $seekerKills", NamedTextColor.YELLOW))
 
         if (hiders.isEmpty()) {
             endWithSeekerWin()
@@ -280,6 +426,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     private fun endWithSeekerWin() {
         task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
 
         broadcast(
@@ -291,7 +438,9 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     }
 
     private fun endWithHiderWin() {
+        task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
 
         broadcast(
@@ -305,6 +454,7 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     fun forceEnd() {
         task?.cancel()
         state = GameState.ENDED
+        phaseRemainingSeconds = 0
         resetBorder()
         broadcast(Component.text("Das Spiel wurde beendet.", NamedTextColor.RED))
         scheduleReset()
@@ -313,12 +463,18 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
     private fun scheduleReset() {
         object : BukkitRunnable() {
             override fun run() {
+                restoreAllFoundPlayers()
                 players.forEach { resetPlayerScale(it) }
                 seeker?.inventory?.clear()
                 players.clear()
                 hiders.clear()
+                foundPlayers.clear()
                 seeker = null
                 seekerElytraActive = false
+                seekerKills = 0
+                initialHiderCount = 0
+                phaseRemainingSeconds = 0
+                selectedSeekerId = null
                 state = GameState.WAITING
             }
         }.runTaskLater(plugin, 100L)
@@ -326,5 +482,93 @@ class HideAndSeekGame(val plugin: JavaPlugin) {
 
     private fun broadcast(message: Component) {
         players.forEach { it.sendMessage(message) }
+    }
+
+    private fun broadcastGlobal(message: Component) {
+        Bukkit.getOnlinePlayers().forEach { it.sendMessage(message) }
+    }
+
+    private fun setFoundState(player: Player) {
+        if (!foundPlayers.add(player.uniqueId)) return
+        Bukkit.getOnlinePlayers()
+            .asSequence()
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { viewer -> viewer.hidePlayer(plugin, player) }
+        muteVoiceChat(player)
+    }
+
+    private fun removeFoundState(player: Player) {
+        if (!foundPlayers.remove(player.uniqueId)) return
+        Bukkit.getOnlinePlayers()
+            .asSequence()
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { viewer -> viewer.showPlayer(plugin, player) }
+        unmuteVoiceChat(player)
+    }
+
+    private fun restoreAllFoundPlayers() {
+        foundPlayers.toList().mapNotNull { Bukkit.getPlayer(it) }.forEach { removeFoundState(it) }
+    }
+
+    fun hideFoundPlayersFor(viewer: Player) {
+        foundPlayers.mapNotNull { Bukkit.getPlayer(it) }
+            .filter { it.uniqueId != viewer.uniqueId }
+            .forEach { viewer.hidePlayer(plugin, it) }
+    }
+
+    private fun sendFoundPlayerToLobby(player: Player) {
+        val lobbyWorld = resolveLobbyWorld()
+        if (lobbyWorld == null) {
+            player.sendMessage(Component.text("Lobby-Welt konnte nicht geladen werden.", NamedTextColor.RED))
+            return
+        }
+        val targetLocation = lobbyLocation?.let { configured ->
+            Location(
+                lobbyWorld,
+                configured.x,
+                configured.y,
+                configured.z,
+                configured.yaw,
+                configured.pitch
+            )
+        } ?: lobbyWorld.spawnLocation
+        player.teleport(targetLocation)
+    }
+
+    private fun resolveLobbyWorld(): World? {
+        val configuredName = lobbyWorldName?.takeIf { it.isNotBlank() } ?: return Bukkit.getWorlds().firstOrNull()
+        return Bukkit.getWorld(configuredName) ?: WorldCreator.name(configuredName).createWorld()
+    }
+
+    private fun readLobbyLocation(): dev.hiorcraft.nex.hideandseek.world.StoredLocation? {
+        val section = plugin.config.getConfigurationSection("game.lobby.location") ?: return null
+        return dev.hiorcraft.nex.hideandseek.world.StoredLocation(
+            x = section.getDouble("x"),
+            y = section.getDouble("y"),
+            z = section.getDouble("z"),
+            yaw = section.getDouble("yaw").toFloat(),
+            pitch = section.getDouble("pitch").toFloat()
+        )
+    }
+
+    private fun muteVoiceChat(player: Player) {
+        if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
+        val safeName = sanitizePlayerNameForCommand(player.name) ?: return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat mute $safeName")
+    }
+
+    private fun unmuteVoiceChat(player: Player) {
+        if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
+        val safeName = sanitizePlayerNameForCommand(player.name) ?: return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat unmute $safeName")
+    }
+
+    private fun sanitizePlayerNameForCommand(name: String): String? {
+        return if (name.matches(COMMAND_SAFE_PLAYER_NAME_REGEX)) {
+            name
+        } else {
+            plugin.logger.warning("Ungültiger Spielername für Voicechat-Befehl: $name")
+            null
+        }
     }
 }

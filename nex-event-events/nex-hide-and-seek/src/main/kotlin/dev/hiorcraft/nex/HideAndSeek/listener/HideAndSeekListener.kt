@@ -9,6 +9,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityToggleGlideEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.persistence.PersistentDataType
 
@@ -19,6 +20,11 @@ class HideAndSeekListener(private val game: HideAndSeekGame) : Listener {
         if (event.player in game.players) {
             game.leave(event.player)
         }
+    }
+
+    @EventHandler
+    fun onPlayerJoin(event: PlayerJoinEvent) {
+        game.hideFoundPlayersFor(event.player)
     }
 
     @EventHandler
@@ -49,13 +55,15 @@ class HideAndSeekListener(private val game: HideAndSeekGame) : Listener {
         when {
             pdc.has(game.glowPearlKey, PersistentDataType.BOOLEAN) -> {
                 event.isCancelled = true
-                player.inventory.setItemInMainHand(null)
-                game.useGlowPearl()
+                if (game.useGlowPearl(player)) {
+                    player.inventory.setItemInMainHand(null)
+                }
             }
             pdc.has(game.elytraPearlKey, PersistentDataType.BOOLEAN) -> {
                 event.isCancelled = true
-                player.inventory.setItemInMainHand(null)
-                game.useElytraPearl(player)
+                if (game.useElytraPearl(player)) {
+                    player.inventory.setItemInMainHand(null)
+                }
             }
         }
     }
