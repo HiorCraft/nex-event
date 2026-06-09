@@ -49,13 +49,15 @@ class HideAndSeekListener(private val game: HideAndSeekGame) : Listener {
         when {
             pdc.has(game.glowPearlKey, PersistentDataType.BOOLEAN) -> {
                 event.isCancelled = true
-                player.inventory.setItemInMainHand(null)
-                game.useGlowPearl()
+                if (game.useGlowPearl(player)) {
+                    player.inventory.setItemInMainHand(null)
+                }
             }
             pdc.has(game.elytraPearlKey, PersistentDataType.BOOLEAN) -> {
                 event.isCancelled = true
-                player.inventory.setItemInMainHand(null)
-                game.useElytraPearl(player)
+                if (game.useElytraPearl(player)) {
+                    player.inventory.setItemInMainHand(null)
+                }
             }
         }
     }

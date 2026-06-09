@@ -44,6 +44,7 @@ class HideAndSeekGame(
     val glowPearlKey = NamespacedKey(plugin, "glow_pearl")
     val elytraPearlKey = NamespacedKey(plugin, "elytra_pearl")
     var seekerElytraActive = false
+    var seekerKills = 0
 
     val timerSecondsRemaining: Int
         get() = phaseRemainingSeconds
@@ -180,7 +181,10 @@ class HideAndSeekGame(
         val pearl = ItemStack(Material.ENDER_PEARL)
         val meta = pearl.itemMeta
         meta.displayName(Component.text("Leuchtperle", NamedTextColor.GOLD))
-        meta.lore(listOf(Component.text("Alle Verstecker leuchten 10s!", NamedTextColor.GRAY)))
+        meta.lore(listOf(
+            Component.text("Alle Verstecker leuchten 3s!", NamedTextColor.GRAY),
+            Component.text("Kosten: 10 Kills", NamedTextColor.YELLOW)
+        ))
         meta.persistentDataContainer.set(glowPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
         return pearl
@@ -190,25 +194,44 @@ class HideAndSeekGame(
         val pearl = ItemStack(Material.ENDER_PEARL)
         val meta = pearl.itemMeta
         meta.displayName(Component.text("Elytraperle", NamedTextColor.AQUA))
-        meta.lore(listOf(Component.text("Einmalige Elytra!", NamedTextColor.GRAY)))
+        meta.lore(listOf(
+            Component.text("Einmalige Elytra!", NamedTextColor.GRAY),
+            Component.text("Kosten: 15 Kills", NamedTextColor.YELLOW)
+        ))
         meta.persistentDataContainer.set(elytraPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
         return pearl
     }
 
-    fun useGlowPearl() {
-        hiders.forEach { hider ->
-            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 200, 0))
+    fun useGlowPearl(player: Player): Boolean {
+        val cost = 10
+        if (seekerKills < cost) {
+            player.sendMessage(Component.text("Du benötigst $cost Kills für die Leuchtperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+            return false
         }
-        broadcast(Component.text("Alle Verstecker leuchten für 10 Sekunden!", NamedTextColor.GOLD))
+        seekerKills -= cost
+        hiders.forEach { hider ->
+            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0))
+        }
+        broadcast(Component.text("Alle Verstecker leuchten für 3 Sekunden!", NamedTextColor.GOLD))
+        player.sendMessage(Component.text("Kills übrig: $seekerKills", NamedTextColor.YELLOW))
+        return true
     }
 
-    fun useElytraPearl(s: Player) {
+    fun useElytraPearl(s: Player): Boolean {
+        val cost = 15
+        if (seekerKills < cost) {
+            s.sendMessage(Component.text("Du benötigst $cost Kills für die Elytraperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+            return false
+        }
+        seekerKills -= cost
         seekerElytraActive = true
         s.inventory.setChestplate(ItemStack(Material.ELYTRA))
         s.velocity = s.velocity.add(Vector(0.0, 2.5, 0.0))
         s.sendMessage(Component.text("Elytra aktiviert! Drücke Leertaste zum Gleiten!", NamedTextColor.AQUA))
         s.sendMessage(Component.text("Die Elytra wird nach der Landung entfernt.", NamedTextColor.GRAY))
+        s.sendMessage(Component.text("Kills übrig: $seekerKills", NamedTextColor.YELLOW))
+        return true
     }
 
     fun onSeekerLanded() {
@@ -307,12 +330,14 @@ class HideAndSeekGame(
     fun findHider(hider: Player) {
         if (!hiders.remove(hider)) return
         resetPlayerScale(hider)
+        seekerKills++
 
         hider.sendMessage(Component.text("Du wurdest gefunden!", NamedTextColor.RED))
         broadcast(
             Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
                 .append(Component.text("Noch ${hiders.size} Verstecker übrig.", NamedTextColor.YELLOW))
         )
+        seeker?.sendMessage(Component.text("Kills: $seekerKills", NamedTextColor.YELLOW))
 
         if (hiders.isEmpty()) {
             endWithSeekerWin()
@@ -365,6 +390,7 @@ class HideAndSeekGame(
                 hiders.clear()
                 seeker = null
                 seekerElytraActive = false
+                seekerKills = 0
                 initialHiderCount = 0
                 phaseRemainingSeconds = 0
                 state = GameState.WAITING
