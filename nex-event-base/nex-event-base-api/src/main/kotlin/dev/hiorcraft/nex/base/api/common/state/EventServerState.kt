@@ -6,10 +6,12 @@ import kotlinx.serialization.Serializable
 enum class EventServerState(val playerJoin: Boolean, val displayName: String) {
     OPEN(true, "Offen"),
     CLOSED(false, "Geschlossen"),
-    UNKNOWN(false, "Unbekannt");
+    UNKNOWN(false, "Unbekannt"),
+    WATING(false,"WATING");
 
     fun next(): EventServerState = when (this) {
         OPEN -> CLOSED
+        WATING -> OPEN
         CLOSED -> OPEN
         UNKNOWN -> UNKNOWN
     }

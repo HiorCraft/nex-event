@@ -3,7 +3,7 @@ plugins {
 }
 
 surfPaperPluginApi {
-    mainClass("dev.hiorcraft.nex.HideAndSeek.PaperMain")
+    mainClass("dev.hiorcraft.nex.hideandseek.PaperMain")
     generateLibraryLoader(false)
     foliaSupported(true)
     authors.add("hiorcraft")
