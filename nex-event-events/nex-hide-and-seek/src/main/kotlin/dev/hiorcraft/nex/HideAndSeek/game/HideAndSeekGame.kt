@@ -444,11 +444,22 @@ class HideAndSeekGame(
 
     private fun muteVoiceChat(player: Player) {
         if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
-        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat mute ${player.name}")
+        val safeName = sanitizePlayerNameForCommand(player.name) ?: return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat mute $safeName")
     }
 
     private fun unmuteVoiceChat(player: Player) {
         if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
-        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat unmute ${player.name}")
+        val safeName = sanitizePlayerNameForCommand(player.name) ?: return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat unmute $safeName")
+    }
+
+    private fun sanitizePlayerNameForCommand(name: String): String? {
+        return if (name.matches(Regex("^[A-Za-z0-9_]{1,16}$"))) {
+            name
+        } else {
+            plugin.logger.warning("Ungültiger Spielername für Voicechat-Befehl: $name")
+            null
+        }
     }
 }
