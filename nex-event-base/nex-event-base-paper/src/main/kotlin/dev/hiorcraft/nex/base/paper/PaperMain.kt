@@ -20,4 +20,4 @@ class PaperMain : SuspendingJavaPlugin() {
 }
 
 val eventServerConfigHolder = EventServerConfigHolder()
-val eventServerConfig get() = eventServerConfigHolder.config
+val eventServerConfig get() = eventServerConfigHolder.eventServerConfig
