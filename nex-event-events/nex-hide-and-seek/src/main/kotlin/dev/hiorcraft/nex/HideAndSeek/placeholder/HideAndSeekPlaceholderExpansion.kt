@@ -8,7 +8,7 @@ class HideAndSeekPlaceholderExpansion(
     private val game: HideAndSeekGame
 ) : PlaceholderExpansion() {
 
-    override fun getIdentifier(): String = "has"
+    override fun getIdentifier(): String = "hideandseek"
 
     override fun getAuthor(): String = "hiorcraft"
 
