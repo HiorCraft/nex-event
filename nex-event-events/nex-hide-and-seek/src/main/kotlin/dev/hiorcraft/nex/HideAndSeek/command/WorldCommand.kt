@@ -101,7 +101,7 @@ object WorldCommand {
                                 .executes { ctx ->
                                     val player = ctx.source.sender as? Player ?: return@executes 0
                                     val name = StringArgumentType.getString(ctx, "name")
-                                    val updated = worldMapManager.updateBorderCenter(
+                                    val updated = worldMapManager.updateMap(
                                         name = name,
                                         worldName = player.world.name,
                                         borderCenter = StoredLocation.fromLocation(player.location)

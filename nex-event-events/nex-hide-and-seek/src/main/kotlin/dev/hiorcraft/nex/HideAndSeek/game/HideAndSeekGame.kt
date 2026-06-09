@@ -121,7 +121,10 @@ class HideAndSeekGame(
     }
 
     private fun teleportPlayersToActiveMap(): Boolean {
-        val map = worldMapManager.activeMap ?: return true
+        val map = worldMapManager.activeMap ?: run {
+            broadcast(Component.text("Keine aktive Map gesetzt, aktueller Spieler-Standort wird genutzt.", NamedTextColor.YELLOW))
+            return true
+        }
         val world = worldMapManager.resolveWorld(map)
         if (world == null) {
             broadcast(Component.text("Die aktive Map-Welt konnte nicht geladen werden.", NamedTextColor.RED))

@@ -5,8 +5,8 @@ import org.bukkit.World
 
 data class WorldMap(
     val name: String,
-    var worldName: String,
-    var borderCenter: StoredLocation
+    val worldName: String,
+    val borderCenter: StoredLocation
 )
 
 data class StoredLocation(
