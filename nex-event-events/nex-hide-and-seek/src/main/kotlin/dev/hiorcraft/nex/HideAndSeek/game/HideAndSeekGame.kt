@@ -41,6 +41,10 @@ class HideAndSeekGame(
     private var gameWorld: World? = null
     private var originalBorderSize = 60_000_000.0
 
+    private val glowPearlCost = 10
+    private val elytraPearlCost = 15
+    private val glowDurationSeconds = 3
+
     val glowPearlKey = NamespacedKey(plugin, "glow_pearl")
     val elytraPearlKey = NamespacedKey(plugin, "elytra_pearl")
     var seekerElytraActive = false
@@ -182,8 +186,8 @@ class HideAndSeekGame(
         val meta = pearl.itemMeta
         meta.displayName(Component.text("Leuchtperle", NamedTextColor.GOLD))
         meta.lore(listOf(
-            Component.text("Alle Verstecker leuchten 3s!", NamedTextColor.GRAY),
-            Component.text("Kosten: 10 Kills", NamedTextColor.YELLOW)
+            Component.text("Alle Verstecker leuchten $glowDurationSeconds Sekunden!", NamedTextColor.GRAY),
+            Component.text("Kosten: $glowPearlCost Kills", NamedTextColor.YELLOW)
         ))
         meta.persistentDataContainer.set(glowPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
@@ -196,7 +200,7 @@ class HideAndSeekGame(
         meta.displayName(Component.text("Elytraperle", NamedTextColor.AQUA))
         meta.lore(listOf(
             Component.text("Einmalige Elytra!", NamedTextColor.GRAY),
-            Component.text("Kosten: 15 Kills", NamedTextColor.YELLOW)
+            Component.text("Kosten: $elytraPearlCost Kills", NamedTextColor.YELLOW)
         ))
         meta.persistentDataContainer.set(elytraPearlKey, PersistentDataType.BOOLEAN, true)
         pearl.itemMeta = meta
@@ -204,27 +208,25 @@ class HideAndSeekGame(
     }
 
     fun useGlowPearl(player: Player): Boolean {
-        val cost = 10
-        if (seekerKills < cost) {
-            player.sendMessage(Component.text("Du benötigst $cost Kills für die Leuchtperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+        if (seekerKills < glowPearlCost) {
+            player.sendMessage(Component.text("Du benötigst $glowPearlCost Kills für die Leuchtperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
             return false
         }
-        seekerKills -= cost
+        seekerKills -= glowPearlCost
         hiders.forEach { hider ->
-            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0))
+            hider.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, glowDurationSeconds * 20, 0))
         }
-        broadcast(Component.text("Alle Verstecker leuchten für 3 Sekunden!", NamedTextColor.GOLD))
+        broadcast(Component.text("Alle Verstecker leuchten für $glowDurationSeconds Sekunden!", NamedTextColor.GOLD))
         player.sendMessage(Component.text("Kills übrig: $seekerKills", NamedTextColor.YELLOW))
         return true
     }
 
     fun useElytraPearl(s: Player): Boolean {
-        val cost = 15
-        if (seekerKills < cost) {
-            s.sendMessage(Component.text("Du benötigst $cost Kills für die Elytraperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
+        if (seekerKills < elytraPearlCost) {
+            s.sendMessage(Component.text("Du benötigst $elytraPearlCost Kills für die Elytraperle! (Aktuell: $seekerKills)", NamedTextColor.RED))
             return false
         }
-        seekerKills -= cost
+        seekerKills -= elytraPearlCost
         seekerElytraActive = true
         s.inventory.setChestplate(ItemStack(Material.ELYTRA))
         s.velocity = s.velocity.add(Vector(0.0, 2.5, 0.0))
