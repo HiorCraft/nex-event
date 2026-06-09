@@ -2,12 +2,13 @@
 
 package dev.hiorcraft.nex.hideandseek.command
 
+import com.mojang.brigadier.arguments.StringArgumentType
 import dev.hiorcraft.nex.hideandseek.game.HideAndSeekGame
 import dev.hiorcraft.nex.hideandseek.game.GameState
-import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 
 @Suppress("UnstableApiUsage")
@@ -73,8 +74,63 @@ object HideAndSeekCommand {
                             sender.sendMessage(
                                 Component.text("Spieler: ${game.players.size} | Verstecker: ${game.hiders.size} | Sucher: ${game.seeker?.name ?: "-"}", NamedTextColor.GRAY)
                             )
+                            if (game.isManualSeekerSelectionEnabled) {
+                                sender.sendMessage(
+                                    Component.text(
+                                        "Gewählter Sucher: ${game.selectedSeekerName ?: "-"}",
+                                        NamedTextColor.GRAY
+                                    )
+                                )
+                            }
                             1
                         }
+                )
+                .then(
+                    Commands.literal("seeker")
+                        .requires { it.sender.hasPermission("hideandseek.admin") }
+                        .then(
+                            Commands.argument("player", StringArgumentType.word())
+                                .executes { ctx ->
+                                    val sender = ctx.source.sender
+                                    if (!game.isManualSeekerSelectionEnabled) {
+                                        sender.sendMessage(
+                                            Component.text(
+                                                "Der Modus 'COMMAND' muss in der Config gesetzt sein.",
+                                                NamedTextColor.RED
+                                            )
+                                        )
+                                        return@executes 0
+                                    }
+                                    if (game.state != GameState.WAITING) {
+                                        sender.sendMessage(Component.text("Sucher kann nur vor dem Start gesetzt werden.", NamedTextColor.RED))
+                                        return@executes 0
+                                    }
+                                    val input = StringArgumentType.getString(ctx, "player")
+                                    if (input.equals("clear", ignoreCase = true)) {
+                                        game.clearSelectedSeeker()
+                                        sender.sendMessage(Component.text("Ausgewählter Sucher wurde entfernt.", NamedTextColor.YELLOW))
+                                        return@executes 1
+                                    }
+                                    val target = Bukkit.getPlayerExact(input)
+                                    if (target == null || target !in game.players) {
+                                        sender.sendMessage(
+                                            Component.text(
+                                                "Spieler nicht gefunden oder nicht im Spiel. Nutze /has join zuerst.",
+                                                NamedTextColor.RED
+                                            )
+                                        )
+                                        return@executes 0
+                                    }
+                                    if (!game.selectSeeker(target)) {
+                                        sender.sendMessage(Component.text("Sucher konnte nicht gesetzt werden.", NamedTextColor.RED))
+                                        return@executes 0
+                                    }
+                                    sender.sendMessage(
+                                        Component.text("Sucher wurde auf ${target.name} gesetzt.", NamedTextColor.GREEN)
+                                    )
+                                    1
+                                }
+                        )
                 )
                 .build(),
             "Hide and Seek Befehl",

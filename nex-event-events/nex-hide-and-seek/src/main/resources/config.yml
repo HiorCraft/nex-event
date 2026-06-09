@@ -1,0 +1,22 @@
+game:
+  hide-seconds: 30
+  seek-seconds: 180
+  # RANDOM: Sucher wird zufällig gewählt
+  # COMMAND: Sucher muss vor Start per /has seeker <spieler> gesetzt werden
+  seeker-selection-mode: RANDOM
+  # VANISH: Gefundene Verstecker bleiben im Spiel und werden unsichtbar
+  # LOBBY: Gefundene Verstecker werden in die Lobby teleportiert
+  found-player-behavior: VANISH
+  lobby:
+    # Wird bei found-player-behavior: LOBBY verwendet
+    world: world
+    # Wenn leer/nicht gesetzt, wird der Spawn der Lobby-Welt verwendet
+    location:
+      x: 0.0
+      y: 80.0
+      z: 0.0
+      yaw: 0.0
+      pitch: 0.0
+
+active-map: null
+maps: {}

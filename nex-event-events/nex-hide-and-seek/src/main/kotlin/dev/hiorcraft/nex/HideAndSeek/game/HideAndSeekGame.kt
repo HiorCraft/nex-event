@@ -7,10 +7,12 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Registry
 import org.bukkit.World
+import org.bukkit.WorldCreator
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -30,6 +32,28 @@ class HideAndSeekGame(
         private val COMMAND_SAFE_PLAYER_NAME_REGEX = Regex("^[A-Za-z0-9_]{1,16}$")
     }
 
+    private enum class SeekerSelectionMode {
+        RANDOM,
+        COMMAND;
+
+        companion object {
+            fun fromConfig(value: String?): SeekerSelectionMode {
+                return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: RANDOM
+            }
+        }
+    }
+
+    private enum class FoundPlayerBehavior {
+        VANISH,
+        LOBBY;
+
+        companion object {
+            fun fromConfig(value: String?): FoundPlayerBehavior {
+                return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: VANISH
+            }
+        }
+    }
+
     var state: GameState = GameState.WAITING
         private set
 
@@ -40,9 +64,14 @@ class HideAndSeekGame(
     private var initialHiderCount = 0
     private var phaseRemainingSeconds = 0
 
-    private val hideSeconds = 30
-    private val seekSeconds = 180
+    private val hideSeconds = plugin.config.getInt("game.hide-seconds", 30).coerceAtLeast(1)
+    private val seekSeconds = plugin.config.getInt("game.seek-seconds", 180).coerceAtLeast(1)
+    private val seekerSelectionMode = SeekerSelectionMode.fromConfig(plugin.config.getString("game.seeker-selection-mode"))
+    private val foundPlayerBehavior = FoundPlayerBehavior.fromConfig(plugin.config.getString("game.found-player-behavior"))
+    private val lobbyWorldName = plugin.config.getString("game.lobby.world")
+    private val lobbyLocation = readLobbyLocation()
     private var task: BukkitRunnable? = null
+    private var selectedSeekerId: UUID? = null
 
     private var gameWorld: World? = null
     private var originalBorderSize = 60_000_000.0
@@ -65,6 +94,28 @@ class HideAndSeekGame(
     val deadHidersCount: Int
         get() = (initialHiderCount - hiders.size).coerceAtLeast(0)
 
+    val isManualSeekerSelectionEnabled: Boolean
+        get() = seekerSelectionMode == SeekerSelectionMode.COMMAND
+
+    val selectedSeekerName: String?
+        get() {
+            val selectedId = selectedSeekerId ?: return null
+            return players.firstOrNull { it.uniqueId == selectedId }?.name
+                ?: Bukkit.getPlayer(selectedId)?.name
+        }
+
+    fun selectSeeker(player: Player): Boolean {
+        if (state != GameState.WAITING) return false
+        if (!isManualSeekerSelectionEnabled) return false
+        if (player !in players) return false
+        selectedSeekerId = player.uniqueId
+        return true
+    }
+
+    fun clearSelectedSeeker() {
+        selectedSeekerId = null
+    }
+
     fun join(player: Player): Boolean {
         if (state != GameState.WAITING) {
             player.sendMessage(Component.text("Das Spiel läuft bereits!", NamedTextColor.RED))
@@ -83,6 +134,9 @@ class HideAndSeekGame(
         hiders.remove(player)
         resetPlayerScale(player)
         removeFoundState(player)
+        if (state == GameState.WAITING && selectedSeekerId == player.uniqueId) {
+            selectedSeekerId = null
+        }
 
         if (seeker == player) {
             seeker = null
@@ -108,8 +162,21 @@ class HideAndSeekGame(
         }
         if (!teleportPlayersToActiveMap()) return false
 
-        val picked = players.random()
+        val picked = when (seekerSelectionMode) {
+            SeekerSelectionMode.RANDOM -> players.random()
+            SeekerSelectionMode.COMMAND -> {
+                val selected = selectedSeekerId?.let { selectedId ->
+                    players.firstOrNull { it.uniqueId == selectedId }
+                }
+                if (selected == null) {
+                    broadcast(Component.text("Es wurde kein gültiger Sucher gesetzt. Nutze /has seeker <spieler>.", NamedTextColor.RED))
+                    return false
+                }
+                selected
+            }
+        }
         seeker = picked
+        selectedSeekerId = null
         hiders.addAll(players.filter { it != picked })
         initialHiderCount = hiders.size
 
@@ -340,7 +407,10 @@ class HideAndSeekGame(
         if (!hiders.remove(hider)) return
         resetPlayerScale(hider)
         seekerKills++
-        setFoundState(hider)
+        when (foundPlayerBehavior) {
+            FoundPlayerBehavior.VANISH -> setFoundState(hider)
+            FoundPlayerBehavior.LOBBY -> sendFoundPlayerToLobby(hider)
+        }
 
         hider.sendMessage(Component.text("Du wurdest gefunden!", NamedTextColor.RED))
         val foundMessage = Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
@@ -404,6 +474,7 @@ class HideAndSeekGame(
                 seekerKills = 0
                 initialHiderCount = 0
                 phaseRemainingSeconds = 0
+                selectedSeekerId = null
                 state = GameState.WAITING
             }
         }.runTaskLater(plugin, 100L)
@@ -443,6 +514,41 @@ class HideAndSeekGame(
         foundPlayers.mapNotNull { Bukkit.getPlayer(it) }
             .filter { it.uniqueId != viewer.uniqueId }
             .forEach { viewer.hidePlayer(plugin, it) }
+    }
+
+    private fun sendFoundPlayerToLobby(player: Player) {
+        val lobbyWorld = resolveLobbyWorld()
+        if (lobbyWorld == null) {
+            player.sendMessage(Component.text("Lobby-Welt konnte nicht geladen werden.", NamedTextColor.RED))
+            return
+        }
+        val targetLocation = lobbyLocation?.let { configured ->
+            Location(
+                lobbyWorld,
+                configured.x,
+                configured.y,
+                configured.z,
+                configured.yaw,
+                configured.pitch
+            )
+        } ?: lobbyWorld.spawnLocation
+        player.teleport(targetLocation)
+    }
+
+    private fun resolveLobbyWorld(): World? {
+        val configuredName = lobbyWorldName?.takeIf { it.isNotBlank() } ?: return Bukkit.getWorlds().firstOrNull()
+        return Bukkit.getWorld(configuredName) ?: WorldCreator.name(configuredName).createWorld()
+    }
+
+    private fun readLobbyLocation(): dev.hiorcraft.nex.hideandseek.world.StoredLocation? {
+        val section = plugin.config.getConfigurationSection("game.lobby.location") ?: return null
+        return dev.hiorcraft.nex.hideandseek.world.StoredLocation(
+            x = section.getDouble("x"),
+            y = section.getDouble("y"),
+            z = section.getDouble("z"),
+            yaw = section.getDouble("yaw").toFloat(),
+            pitch = section.getDouble("pitch").toFloat()
+        )
     }
 
     private fun muteVoiceChat(player: Player) {
