@@ -26,6 +26,9 @@ class HideAndSeekGame(
     val plugin: JavaPlugin,
     private val worldMapManager: WorldMapManager
 ) {
+    companion object {
+        private val COMMAND_SAFE_PLAYER_NAME_REGEX = Regex("^[A-Za-z0-9_]{1,16}$")
+    }
 
     var state: GameState = GameState.WAITING
         private set
@@ -433,7 +436,7 @@ class HideAndSeekGame(
     }
 
     private fun restoreAllFoundPlayers() {
-        foundPlayers.mapNotNull { Bukkit.getPlayer(it) }.forEach { removeFoundState(it) }
+        foundPlayers.toList().mapNotNull { Bukkit.getPlayer(it) }.forEach { removeFoundState(it) }
     }
 
     fun hideFoundPlayersFor(viewer: Player) {
@@ -455,7 +458,7 @@ class HideAndSeekGame(
     }
 
     private fun sanitizePlayerNameForCommand(name: String): String? {
-        return if (name.matches(Regex("^[A-Za-z0-9_]{1,16}$"))) {
+        return if (name.matches(COMMAND_SAFE_PLAYER_NAME_REGEX)) {
             name
         } else {
             plugin.logger.warning("Ungültiger Spielername für Voicechat-Befehl: $name")
