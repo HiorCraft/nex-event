@@ -6,6 +6,7 @@ import dev.hiorcraft.nex.hideandseek.world.WorldMapManager
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Registry
@@ -19,6 +20,7 @@ import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.util.Vector
 import java.time.Duration
+import java.util.UUID
 
 class HideAndSeekGame(
     val plugin: JavaPlugin,
@@ -30,6 +32,7 @@ class HideAndSeekGame(
 
     val players = mutableSetOf<Player>()
     val hiders = mutableSetOf<Player>()
+    private val foundPlayers = mutableSetOf<UUID>()
     var seeker: Player? = null
     private var initialHiderCount = 0
     private var phaseRemainingSeconds = 0
@@ -76,6 +79,7 @@ class HideAndSeekGame(
         if (!players.remove(player)) return
         hiders.remove(player)
         resetPlayerScale(player)
+        removeFoundState(player)
 
         if (seeker == player) {
             seeker = null
@@ -333,12 +337,12 @@ class HideAndSeekGame(
         if (!hiders.remove(hider)) return
         resetPlayerScale(hider)
         seekerKills++
+        setFoundState(hider)
 
         hider.sendMessage(Component.text("Du wurdest gefunden!", NamedTextColor.RED))
-        broadcast(
-            Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
-                .append(Component.text("Noch ${hiders.size} Verstecker übrig.", NamedTextColor.YELLOW))
-        )
+        val foundMessage = Component.text("${hider.name} wurde gefunden! ", NamedTextColor.RED)
+            .append(Component.text("Noch ${hiders.size} Verstecker übrig.", NamedTextColor.YELLOW))
+        broadcastGlobal(foundMessage)
         seeker?.sendMessage(Component.text("Kills: $seekerKills", NamedTextColor.YELLOW))
 
         if (hiders.isEmpty()) {
@@ -386,10 +390,12 @@ class HideAndSeekGame(
     private fun scheduleReset() {
         object : BukkitRunnable() {
             override fun run() {
+                restoreAllFoundPlayers()
                 players.forEach { resetPlayerScale(it) }
                 seeker?.inventory?.clear()
                 players.clear()
                 hiders.clear()
+                foundPlayers.clear()
                 seeker = null
                 seekerElytraActive = false
                 seekerKills = 0
@@ -402,5 +408,47 @@ class HideAndSeekGame(
 
     private fun broadcast(message: Component) {
         players.forEach { it.sendMessage(message) }
+    }
+
+    private fun broadcastGlobal(message: Component) {
+        Bukkit.getOnlinePlayers().forEach { it.sendMessage(message) }
+    }
+
+    private fun setFoundState(player: Player) {
+        if (!foundPlayers.add(player.uniqueId)) return
+        Bukkit.getOnlinePlayers()
+            .asSequence()
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { viewer -> viewer.hidePlayer(plugin, player) }
+        muteVoiceChat(player)
+    }
+
+    private fun removeFoundState(player: Player) {
+        if (!foundPlayers.remove(player.uniqueId)) return
+        Bukkit.getOnlinePlayers()
+            .asSequence()
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { viewer -> viewer.showPlayer(plugin, player) }
+        unmuteVoiceChat(player)
+    }
+
+    private fun restoreAllFoundPlayers() {
+        foundPlayers.mapNotNull { Bukkit.getPlayer(it) }.forEach { removeFoundState(it) }
+    }
+
+    fun hideFoundPlayersFor(viewer: Player) {
+        foundPlayers.mapNotNull { Bukkit.getPlayer(it) }
+            .filter { it.uniqueId != viewer.uniqueId }
+            .forEach { viewer.hidePlayer(plugin, it) }
+    }
+
+    private fun muteVoiceChat(player: Player) {
+        if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat mute ${player.name}")
+    }
+
+    private fun unmuteVoiceChat(player: Player) {
+        if (plugin.server.pluginManager.getPlugin("voicechat") == null) return
+        plugin.server.dispatchCommand(plugin.server.consoleSender, "voicechat unmute ${player.name}")
     }
 }
