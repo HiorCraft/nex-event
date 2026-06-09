@@ -72,6 +72,14 @@ class WorldMapManager(private val plugin: JavaPlugin) {
         return maps[key]
     }
 
+    fun updateBorderCenter(name: String, borderCenter: StoredLocation): WorldMap? {
+        val key = name.lowercase()
+        val map = maps[key] ?: return null
+        maps[key] = map.copy(borderCenter = borderCenter)
+        saveToConfig()
+        return maps[key]
+    }
+
     fun getMap(name: String): WorldMap? = maps[name.lowercase()]
 
     fun resolveWorld(map: WorldMap): World? = ensureWorldLoaded(map.worldName)

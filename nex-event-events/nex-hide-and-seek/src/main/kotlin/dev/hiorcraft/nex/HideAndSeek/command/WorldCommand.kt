@@ -118,6 +118,28 @@ object WorldCommand {
                                     )
                                     1
                                 }
+                                .then(
+                                    Commands.literal("center")
+                                        .executes { ctx ->
+                                            val player = ctx.source.sender as? Player ?: return@executes 0
+                                            val name = StringArgumentType.getString(ctx, "name")
+                                            val updated = worldMapManager.updateBorderCenter(
+                                                name = name,
+                                                borderCenter = StoredLocation.fromLocation(player.location)
+                                            )
+                                            if (updated == null) {
+                                                player.sendMessage(Component.text("Map nicht gefunden.", NamedTextColor.RED))
+                                                return@executes 0
+                                            }
+                                            player.sendMessage(
+                                                Component.text(
+                                                    "Border-Mittelpunkt der Map '$name' auf deine aktuelle Position gesetzt.",
+                                                    NamedTextColor.GREEN
+                                                )
+                                            )
+                                            1
+                                        }
+                                )
                         )
                 )
                 .build(),
