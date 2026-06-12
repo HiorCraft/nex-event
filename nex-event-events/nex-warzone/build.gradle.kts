@@ -6,7 +6,8 @@ surfPaperPluginApi {
     mainClass("dev.danilo.nex.warzone.PaperMain")
     generateLibraryLoader(false)
     foliaSupported(true)
-    authors.add("danilo")
+
+    authors.add("Danilo")
 }
 
 repositories {

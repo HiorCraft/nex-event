@@ -16,7 +16,5 @@ class PaperMain : SuspendingJavaPlugin() {
     }
 
     override fun onDisable() {
-        logger.info("by <3")
-
     }
 }
