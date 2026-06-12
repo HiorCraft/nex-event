@@ -3,10 +3,10 @@ plugins {
 }
 
 surfPaperPluginApi {
-    mainClass("dev.hiorcraft.nex.hideandseek.PaperMain")
+    mainClass("dev.danilo.nex.warzone.PaperMain")
     generateLibraryLoader(false)
     foliaSupported(true)
-    authors.add("HiorCraft")
+    authors.add("danilo")
 }
 
 repositories {

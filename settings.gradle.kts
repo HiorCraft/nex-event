@@ -19,7 +19,8 @@ include("nex-event-base:nex-event-base-velocity")
 include("nex-event-base:nex-event-base-paper")
 
 listOf(
-    "nex-hide-and-seek"
+    "nex-hide-and-seek",
+    "nex-warzone"
 ).forEach { event ->
     include("nex-event-events:$event")
 }
